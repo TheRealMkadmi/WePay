@@ -1,0 +1,71 @@
+# docker-compose.yml
+version: '3.7'
+services: 
+    nginx:
+        image: jonasal/nginx-certbot:latest
+        restart: unless-stopped
+        environment:
+            CERTBOT_EMAIL: ${CERTBOT_EMAIL}
+            STAGING: ${STAGING}
+            DHPARAM_SIZE: ${DHPARAM_SIZE}
+            RSA_KEY_SIZE: ${RSA_KEY_SIZE}
+            ELLIPTIC_CURVE: ${ELLIPTIC_CURVE}
+            USE_ECDSA: ${USE_ECDSA}
+            RENEWAL_INTERVAL: ${RENEWAL_INTERVAL}
+            DEBUG: ${DEBUG}
+        env_file: .env
+        ports:
+            - "80:80"
+            - "443:443"
+        depends_on: 
+            - wepay
+        volumes:
+            - nginx_secrets:/etc/letsencrypt
+            - ./docker/prod/nginx/user_conf.d:/etc/nginx/user_conf.d:rw
+        networks: 
+            - webnet
+        # ------------ WEPAY.TN SECTION ------------- #
+    wepay_db:
+        image: mysql:5.7
+        container_name: Wepay_DB
+        restart: unless-stopped
+        environment:
+            - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+            - MYSQL_ROOT_USER=${DB_USERNAME}
+            # - MYSQL_USER=${WEPAY_DB_USERNAME}
+            # - MYSQL_PASSWORD=${WEPAY_DB_PASSWORD}
+            - MYSQL_DATABASE=${DB_DATABASE}
+        ports: 
+            - 5223:3306
+        env_file: .env
+        volumes: 
+            - wepay_mysqldata:/var/lib/mysql
+        networks: 
+            - webnet
+        healthcheck:
+            test: "/usr/bin/mysql --user=root --password=$$DB_PASSWORD --execute \"SHOW DATABASES;\""
+            interval: 2s
+            timeout: 60s
+            retries: 30
+    wepay:
+        tty: true
+        build: 
+            context: .
+            dockerfile: docker/prod/wepay.Dockerfile
+        container_name: wepay
+        depends_on:
+            wepay_db:
+                condition: service_healthy
+        ports:
+            - 3000:80
+        env_file: .env
+        volumes:
+            - .:/var/www/html/:rw
+        networks: 
+            - webnet
+
+volumes:
+    nginx_secrets:
+    wepay_mysqldata:
+networks: 
+    webnet:
